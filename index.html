@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haze Exposure Calculator — PM2.5 (NEA Live)</title>
+<style>
+:root {
+  --bg: #f6f4ef;
+  --card: #fdfcf9;
+  --ink: #23211c;
+  --muted: #6f6d66;
+  --faint: #a9a79f;
+  --line: #e3e0d8;
+  --accent: #01696f;
+  --accent-soft: #e3eeed;
+  --accent-hover: #015257;
+  --danger: #8f2f28;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(35,33,28,.05), 0 8px 28px rgba(35,33,28,.06);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.55;
+  padding: 32px 20px 72px;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 880px; margin: 0 auto; }
+header.masthead { margin-bottom: 28px; }
+.kicker {
+  font-size: 12px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 8px;
+}
+h1 { font-size: clamp(26px, 4vw, 34px); line-height: 1.15; letter-spacing: -0.01em; max-width: 24ch; }
+.sub { color: var(--muted); margin-top: 10px; max-width: 64ch; }
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 24px; margin-top: 20px;
+}
+.card h2 { font-size: 17px; margin-bottom: 4px; }
+.card .hint { font-size: 13px; color: var(--muted); margin-bottom: 18px; max-width: 66ch; }
+
+/* ---- mode tabs ---- */
+.tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+.tab {
+  border: 1px solid var(--line); background: transparent; border-radius: 999px;
+  padding: 7px 16px; font-size: 14px; color: var(--muted); cursor: pointer;
+  transition: all .15s ease;
+}
+.tab.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.tab:not(.on):hover { border-color: var(--faint); color: var(--ink); }
+
+/* ---- nea fetcher toolbar ---- */
+.nea-bar {
+  background: #f1efe9; border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 18px; display: flex; flex-wrap: wrap;
+  gap: 12px 18px; align-items: flex-end;
+}
+.nea-col { display: flex; flex-direction: column; gap: 4px; }
+.nea-col label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.nea-bar select, .nea-bar input[type="date"] {
+  font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: #fff; color: var(--ink);
+}
+.btn-nea {
+  background: var(--accent); color: #fff; border: 1px solid var(--accent);
+  padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: background .15s ease; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-nea:hover { background: var(--accent-hover); }
+.btn-nea:disabled { opacity: 0.6; cursor: wait; }
+.status-msg { width: 100%; font-size: 12px; color: var(--muted); margin-top: 4px; min-height: 18px; }
+.status-msg.error { color: var(--danger); font-weight: 500; }
+.status-msg.ok { color: var(--accent); font-weight: 500; }
+
+/* ---- 24h mode ---- */
+#avgbox { display: flex; gap: 14px; align-items: center; }
+#avgbox input[type="number"] {
+  width: 110px; font: inherit; font-size: 15px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff;
+}
+#avgbox span { font-size: 13px; color: var(--muted); max-width: 46ch; }
+
+/* ---- hourly grid ---- */
+#hourly .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.btn {
+  border: 1px solid var(--line); background: #fff; border-radius: 8px;
+  padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--muted);
+  transition: all .15s ease;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 6px; background: #fff; border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px;
+}
+.gcell { position: relative; }
+.gcell label {
+  position: absolute; top: 4px; left: 7px; font-size: 10px; color: var(--faint);
+  letter-spacing: .04em; pointer-events: none;
+}
+.gcell input {
+  width: 100%; font: inherit; font-size: 14px; padding: 16px 6px 5px 6px;
+  border: 1px solid transparent; border-radius: 6px; background: transparent;
+  color: var(--ink); text-align: center;
+}
+.gcell input:focus { border-color: var(--accent); background: #fff; outline: none; }
+.gcell.filled input { background: var(--accent-soft); }
+
+/* ---- trips ---- */
+#trips { margin-bottom: 6px; }
+.trow {
+  display: grid; grid-template-columns: 104px 104px 1fr 40px;
+  gap: 8px; align-items: center; margin-bottom: 8px;
+}
+.trow .tl { position: relative; }
+.trow label {
+  position: absolute; top: 3px; left: 9px; font-size: 10px; color: var(--faint); pointer-events: none;
+}
+.trow input, .trow select {
+  width: 100%; font: inherit; font-size: 14px; padding: 17px 8px 5px;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+}
+.trow select { padding-top: 15px; }
+.trow input[type="time"] { padding-right: 30px; }
+.trow .del {
+  border: 1px solid transparent; background: transparent; border-radius: 8px;
+  font-size: 17px; color: var(--faint); cursor: pointer; line-height: 1;
+}
+.trow .del:hover { color: var(--danger); border-color: var(--line); }
+
+/* ---- sliders & checkboxes ---- */
+.field { display: flex; gap: 14px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+.field > span { font-size: 13px; color: var(--muted); min-width: 220px; flex: 1 1 100%; }
+@media (min-width: 561px) { .field > span { flex: 0 0 auto; } }
+.field output { font-size: 14px; font-weight: 600; min-width: 52px; text-align: right; }
+.field select {
+  font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: #fff; color: var(--ink); flex: 1; max-width: 300px;
+}
+.checks { display: flex; flex-wrap: wrap; gap: 10px 24px; margin-top: 18px; }
+.checks label { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
+.checks input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* ---- results ---- */
+#result .bigrow { display: flex; flex-wrap: wrap; gap: 12px 36px; align-items: baseline; }
+#avgout { font-size: clamp(30px, 5vw, 40px); font-weight: 700; letter-spacing: -0.02em; }
+#avgout small { font-size: 15px; font-weight: 400; color: var(--muted); }
+.kpi { font-size: 13px; color: var(--muted); }
+.kpi b { display: block; font-size: 19px; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.riskline { margin-top: 16px; font-size: 16px; }
+.riskline b { padding: 2px 10px; border-radius: 6px; color: #fff; font-weight: 600; font-size: 15px; }
+.risknote { font-size: 14px; color: var(--muted); margin-top: 6px; max-width: 68ch; }
+
+/* risk bar */
+.bar { position: relative; height: 16px; border-radius: 5px; overflow: hidden; display: flex; margin-top: 26px; }
+.bar > div { height: 100%; }
+.bar > div:nth-child(1) { width: 15%; background: #3f9c5f; }
+.bar > div:nth-child(2) { width: 10%; background: #8fbc45; }
+.bar > div:nth-child(3) { width: 12.5%; background: #d9c33c; }
+.bar > div:nth-child(4) { width: 12.5%; background: #e0913a; }
+.bar > div:nth-child(5) { width: 25%; background: #d1584f; }
+.bar > div:nth-child(6) { width: 25%; background: #8c3a8c; }
+.mk {
+  position: absolute; top: -5px; width: 3px; height: 26px; background: var(--ink);
+  border-radius: 2px; transform: translateX(-50%);
+}
+.barticks { display: flex; position: relative; font-size: 11px; color: var(--faint); margin-top: 6px;
+  font-variant-numeric: tabular-nums; }
+.barticks span { position: absolute; transform: translateX(-50%); }
+@media (max-width: 560px) { .barticks .tk { display: none; } }
+
+/* chart */
+#chart { margin-top: 26px; }
+#chart svg { width: 100%; height: auto; display: block; }
+.leg { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.leg i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+footer { margin-top: 28px; font-size: 12px; color: var(--faint); max-width: 72ch; }
+footer p { margin-top: 6px; }
+
+@media (max-width: 560px) {
+  .trow { grid-template-columns: 1fr 1fr; }
+  .trow .tl:last-of-type { grid-column: 1 / -1; }
+  .field > span { min-width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="kicker">NEA Live · PM2.5 Personal Exposure</div>
+  <h1>Daily PM2.5 exposure calculator</h1>
+  <p class="sub">Estimates your cumulative inhaled PM2.5 from outdoor exposure only — walks, commutes and exercise — using live or historical official readings from Singapore's National Environment Agency (NEA via data.gov.sg).</p>
+</header>
+
+<section class="card" aria-labelledby="h-pm">
+  <h2 id="h-pm">1 · PM2.5 readings for the day</h2>
+  <p class="hint">Fetch hourly regional measurements directly from NEA, or manually override cells if needed.</p>
+
+  <div class="nea-bar">
+    <div class="nea-col">
+      <label for="date">Date</label>
+      <input type="date" id="date">
+    </div>
+    <div class="nea-col">
+      <label for="region">Singapore Region</label>
+      <select id="region">
+        <option value="central" selected>Central</option>
+        <option value="north">North</option>
+        <option value="south">South</option>
+        <option value="east">East</option>
+        <option value="west">West</option>
+        <option value="avg">National Average</option>
+      </select>
+    </div>
+    <button class="btn-nea" id="btn-fetch">Fetch from NEA</button>
+    <div class="status-msg" id="nea-status" aria-live="polite"></div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab on" id="tab-h" role="tab" aria-selected="true">Hourly readings</button>
+    <button class="tab" id="tab-a" role="tab" aria-selected="false">24-hour average</button>
+  </div>
+
+  <div id="hourly">
+    <div class="tools">
+      <button class="btn" id="fillall">Copy first value to all hours</button>
+      <button class="btn" id="clearall">Clear all</button>
+    </div>
+    <div class="grid" id="hgrid" aria-label="Hourly PM2.5 readings in micrograms per cubic metre"></div>
+  </div>
+
+  <div id="avg" hidden>
+    <div id="avgbox">
+      <input type="number" id="avgval" min="0" max="1000" step="1" value="55" aria-label="24-hour average PM2.5">
+      <span>µg/m³ — the 24-hour regional average. Automatically calculated from NEA data or set manually.</span>
+    </div>
+  </div>
+</section>
+
+<section class="card" aria-labelledby="h-out">
+  <h2 id="h-out">2 · Outdoor trips & mask</h2>
+  <p class="hint">Add each outdoor stint — every trip is matched to the NEA concentration recorded during that hour, adjusted for how hard you're breathing and any mask worn.</p>
+
+  <div id="trips"></div>
+  <button class="btn" id="addtrip">+ Add another trip</button>
+
+  <div class="field">
+    <span for="mask">Mask worn on trips</span>
+    <select id="mask">
+      <option value="0" selected>No mask</option>
+      <option value="0.5">Cloth mask (≈50% filtered)</option>
+      <option value="0.65">Surgical mask (≈65% filtered)</option>
+      <option value="0.8">KN95 (≈80% filtered)</option>
+      <option value="0.9">N95 / FFP2 (≈90% filtered)</option>
+    </select>
+  </div>
+
+  <div class="checks">
+    <label><input type="checkbox" id="sensitive"> Sensitive person (child, elderly, pregnant, asthma / heart condition)</label>
+  </div>
+</section>
+
+<section class="card" id="result" aria-labelledby="h-res">
+  <h2 id="h-res">3 · Your day, in numbers</h2>
+  <p class="hint">Updated live based on the active NEA readings.</p>
+
+  <div class="bigrow">
+    <div id="avgout" aria-live="polite">—</div>
+    <div class="kpi">Daily dose<b id="dose">—</b>µg·h/m³ inhaled</div>
+    <div class="kpi">Avg PM2.5 during trips<b id="tripavg">—</b>µg/m³ while outside</div>
+    <div class="kpi">Time outdoors<b id="hrs">—</b>hours</div>
+  </div>
+
+  <div class="bar" aria-hidden="true">
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <span class="mk" id="mk"></span>
+  </div>
+  <div class="barticks" id="ticks">
+    <span style="left:0;transform:none">0</span>
+    <span style="left:15%">15<i class="tk"> · WHO</i></span>
+    <span style="left:25%">25</span>
+    <span style="left:37.5%">37.5<i class="tk"> · SG 24h</i></span>
+    <span style="left:50%">50</span>
+    <span style="left:75%">75</span>
+    <span style="right:0;left:auto;transform:none">100+</span>
+  </div>
+
+  <div class="riskline">Risk level: <b id="risk" aria-live="polite">—</b></div>
+  <p class="risknote" id="advice"></p>
+
+  <div id="chart" aria-label="Chart of PM2.5 concentration across the day with your outdoor trips marked"></div>
+  <div class="leg">
+    <span><i style="background:#01696f"></i>NEA hourly outdoor reading</span>
+    <span><i style="background:#01696f;opacity:.18"></i>Your trips</span>
+    <span><i style="background:none;border-top:2px dashed #3f9c5f;height:0"></i>WHO 24h guideline (15)</span>
+    <span><i style="background:none;border-top:2px dashed #e0913a;height:0"></i>SG 24h target (37.5)</span>
+  </div>
+</section>
+
+<footer>
+  <p><b>Data source:</b> National Environment Agency (NEA) open data API via data.gov.sg. Real-time regional 1-hr PM2.5 readings are recorded at five monitoring stations across Singapore.</p>
+  <p><b>Exposure Formula:</b> Inhaled Index (µg·h/m³) = for each trip: NEA hourly reading × breathing factor × minutes × (1 − mask filtration). Breathing factors: 1.0 (waiting/standing), 1.5 (walking), 2.5 (brisk walk/cycling), 3.5 (jogging). Mask filtration estimates (incl. fit leakage): cloth ≈50%, surgical ≈65%, KN95 ≈80%, N95 ≈90%. The 24-hr equivalent average is index ÷ 24, which is what the risk bands compare against.</p>
+  <p><b>Licence — free public use with attribution:</b> This tool is licensed under the Creative Commons Attribution 4.0 licence (CC BY 4.0). You may use, copy, modify and redistribute it for any purpose, including commercially, provided you credit "Haze Exposure Calculator — PM2.5 (NEA Live)" and link to <span style="word-break:break-all">https://creativecommons.org/licenses/by/4.0/</span> where possible. PM2.5 readings: National Environment Agency via data.gov.sg (open data).</p>
+  <p><b>Risk bands:</b> ≤15 within WHO's 2021 24-hour guideline · 15–25 low–moderate · 25–37.5 moderate · 37.5–50 elevated · 50–75 high · >75 very high. Sensitive people are read one band higher. Breathing factors and mask filtration are practical estimates, not official figures. Screening tool only, not medical advice.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var BANDS = [
+    { max: 15,  name: "Low",          cls: "#3f9c5f", advice: "Within the WHO 24-hour guideline. Air quality is clean." },
+    { max: 25,  name: "Low–moderate", cls: "#8fbc45", advice: "Above WHO guideline but normal for urban environments. Safe for normal activities." },
+    { max: 37.5,name: "Moderate",     cls: "#d9c33c", advice: "Approaching Singapore's 24-hour target. Sensitive individuals should avoid prolonged exertion." },
+    { max: 50,  name: "Elevated",     cls: "#e0913a", advice: "Limit avoidable strenuous time outside; sensitive persons should stay indoors." },
+    { max: 75,  name: "High",         cls: "#d1584f", advice: "Wear an N95 mask for commutes, keep windows closed, and run a HEPA purifier." },
+    { max: 1e9, name: "Very high",    cls: "#8c3a8c", advice: "Avoid all non-essential outdoor activity. Keep indoor air filtered." }
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { mode: "hourly" };
+
+  /* ---------- init grid ---------- */
+  var grid = $("hgrid");
+  for (var h = 0; h < 24; h++) {
+    var cell = document.createElement("div");
+    cell.className = "gcell";
+    var lbl = document.createElement("label");
+    lbl.textContent = (h < 10 ? "0" : "") + h + ":00";
+    var inp = document.createElement("input");
+    inp.type = "number"; inp.min = "0"; inp.max = "1000"; inp.step = "1";
+    inp.setAttribute("aria-label", "PM2.5 at " + (h < 10 ? "0" : "") + h + ":00");
+    inp.dataset.hour = String(h);
+    cell.appendChild(lbl); cell.appendChild(inp); grid.appendChild(cell);
+  }
+
+  function hourVals() {
+    return Array.prototype.map.call(grid.querySelectorAll("input"), function (i) {
+      var v = parseFloat(i.value);
+      return isNaN(v) ? null : v;
+    });
+  }
+
+  function concAt(vals, min) {
+    var h = Math.floor(min / 60), frac = (min - h * 60) / 60;
+    var a = vals[h], b = vals[(h + 1) % 24];
+    if (a === null) return b === null ? 0 : b;
+    if (b === null) return a;
+    return a + (b - a) * frac;
+  }
+
+  /* ---------- NEA API Fetcher ---------- */
+  async function fetchNEA() {
+    var dateVal = $("date").value;
+    var region = $("region").value;
+    var status = $("nea-status");
+    var btn = $("btn-fetch");
+
+    if (!dateVal) {
+      status.className = "status-msg error";
+      status.textContent = "Please select a valid date.";
+      return;
+    }
+
+    btn.disabled = true;
+    status.className = "status-msg";
+    status.textContent = "Connecting to data.gov.sg...";
+
+    // Primary endpoint: v2 real-time API; fallback: v1
+    var urlV2 = "https://api-open.data.gov.sg/v2/real-time/api/pm25?date=" + dateVal;
+    var urlV1 = "https://api.data.gov.sg/v1/environment/pm25?date=" + dateVal;
+
+    try {
+      var res = await fetch(urlV2);
+      if (!res.ok) throw new Error("v2 status " + res.status);
+      var json = await res.json();
+      parseAndPopulate(json, region, dateVal);
+    } catch (errV2) {
+      try {
+        var resV1 = await fetch(urlV1);
+        if (!resV1.ok) throw new Error("v1 status " + resV1.status);
+        var jsonV1 = await resV1.json();
+        parseAndPopulate(jsonV1, region, dateVal);
+      } catch (errV1) {
+        status.className = "status-msg error";
+        status.textContent = "Could not load NEA data (offline or API limit reached). You can still enter readings manually.";
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function parseAndPopulate(payload, region, dateStr) {
+    var status = $("nea-status");
+    // v2: { data: { items: [...] } }  ·  v1: { items: [...] }
+    var items = (payload.data && payload.data.items) || payload.items || [];
+
+    if (!items || items.length === 0) {
+      status.className = "status-msg error";
+      status.textContent = "No records found for " + dateStr + ".";
+      return;
+    }
+
+    var hourlyReadings = new Array(24).fill(null);
+
+    items.forEach(function (item) {
+      var ts = item.timestamp || item.dateTime || item.updatedTimestamp;
+      if (!ts) return;
+
+      // Singapore hour (UTC+8) — works for both "+08:00" and "Z" timestamps
+      var d = new Date(ts);
+      if (isNaN(d)) return;
+      var hour = (d.getUTCHours() + 8) % 24;
+
+      // Extract regional reading
+      var rObj = (item.readings && (item.readings.pm25_one_hourly || item.readings.pm25)) || item.pm25;
+      if (!rObj) return;
+
+      var val = null;
+      if (region === "avg") {
+        var vals = ["west", "east", "central", "south", "north"]
+          .map(function (k) { return rObj[k]; })
+          .filter(function (v) { return typeof v === "number"; });
+        if (vals.length) {
+          val = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+        }
+      } else {
+        val = rObj[region];
+      }
+
+      if (typeof val === "number") {
+        hourlyReadings[hour] = Math.round(val);
+      }
+    });
+
+    // Populate the inputs
+    var inputs = grid.querySelectorAll("input");
+    hourlyReadings.forEach(function (v, idx) {
+      inputs[idx].value = v !== null ? v : "";
+    });
+
+    // Calculate daily average to update 24-hr mode
+    var nonNull = hourlyReadings.filter(function (v) { return v !== null; });
+    if (nonNull.length) {
+      $("avgval").value = Math.round(nonNull.reduce(function (a, b) { return a + b; }, 0) / nonNull.length);
+    }
+
+    status.className = "status-msg ok";
+    status.textContent = "Loaded " + nonNull.length + " hourly readings for " + $("region").selectedOptions[0].text + " (" + dateStr + ").";
+    calc();
+  }
+
+  $("btn-fetch").addEventListener("click", fetchNEA);
+  $("region").addEventListener("change", fetchNEA);
+  $("date").addEventListener("change", fetchNEA);
+
+  /* ---------- grid & mode buttons ---------- */
+  $("fillall").addEventListener("click", function () {
+    var first = grid.querySelector("input").value;
+    grid.querySelectorAll("input").forEach(function (i) { i.value = first; });
+    calc();
+  });
+  $("clearall").addEventListener("click", function () {
+    grid.querySelectorAll("input").forEach(function (i) { i.value = ""; });
+    calc();
+  });
+  grid.addEventListener("input", calc);
+
+  function setMode(m) {
+    state.mode = m;
+    $("tab-h").classList.toggle("on", m === "hourly");
+    $("tab-a").classList.toggle("on", m === "avg");
+    $("tab-h").setAttribute("aria-selected", m === "hourly");
+    $("tab-a").setAttribute("aria-selected", m === "avg");
+    $("hourly").hidden = m !== "hourly";
+    $("avg").hidden = m !== "avg";
+    calc();
+  }
+  $("tab-h").addEventListener("click", function () { setMode("hourly"); });
+  $("tab-a").addEventListener("click", function () { setMode("avg"); });
+  $("avgval").addEventListener("input", calc);
+
+  /* ---------- trips setup ---------- */
+  var ACT = { stand: 1.0, walk: 1.5, brisk: 2.5, jog: 3.5 };
+  var trips = [
+    { t: "07:45", m: 15, a: "walk" },
+    { t: "12:30", m: 10, a: "stand" },
+    { t: "18:15", m: 15, a: "walk" }
+  ];
+  var tripsEl = $("trips");
+
+  function drawTrips() {
+    tripsEl.innerHTML = "";
+    trips.forEach(function (tr, i) {
+      var row = document.createElement("div");
+      row.className = "trow";
+      row.innerHTML =
+        '<div class="tl"><label>Start time</label><input type="time" value="' + tr.t + '" data-i="' + i + '" data-f="t"></div>' +
+        '<div class="tl"><label>Minutes</label><input type="number" min="1" max="720" value="' + tr.m + '" data-i="' + i + '" data-f="m"></div>' +
+        '<div class="tl"><label>Activity</label><select data-i="' + i + '" data-f="a">' +
+          '<option value="stand"' + (tr.a === "stand" ? " selected" : "") + '>Standing / waiting</option>' +
+          '<option value="walk"' + (tr.a === "walk" ? " selected" : "") + '>Walking</option>' +
+          '<option value="brisk"' + (tr.a === "brisk" ? " selected" : "") + '>Brisk walk / cycle</option>' +
+          '<option value="jog"' + (tr.a === "jog" ? " selected" : "") + '>Jogging / running</option>' +
+        '</select></div>' +
+        '<button class="del" data-del="' + i + '" aria-label="Remove trip">×</button>';
+      tripsEl.appendChild(row);
+    });
+  }
+  tripsEl.addEventListener("input", function (e) {
+    var i = e.target.dataset.i, f = e.target.dataset.f;
+    if (i === undefined || !f) return;
+    if (f === "m") trips[i].m = Math.max(1, Math.min(720, parseInt(e.target.value, 10) || 1));
+    else trips[i][f] = e.target.value;
+    calc();
+  });
+  tripsEl.addEventListener("click", function (e) {
+    var i = e.target.dataset.del;
+    if (i === undefined) return;
+    trips.splice(+i, 1);
+    drawTrips(); calc();
+  });
+  $("addtrip").addEventListener("click", function () {
+    trips.push({ t: "12:00", m: 15, a: "walk" });
+    drawTrips(); calc();
+  });
+  drawTrips();
+
+  $("mask").addEventListener("change", calc);
+  $("sensitive").addEventListener("change", calc);
+
+  /* ---------- core calculation ---------- */
+  function fmt(n, d) { return n.toLocaleString("en-SG", { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); }
+
+  function calc() {
+    var vals = hourVals();
+    grid.querySelectorAll("input").forEach(function (i, idx) {
+      i.parentElement.classList.toggle("filled", vals[idx] !== null);
+    });
+    var avgC = parseFloat($("avgval").value) || 0;
+    var maskF = parseFloat($("mask").value) || 0;
+    var sens = $("sensitive").checked;
+    var get = state.mode === "avg"
+      ? function () { return avgC; }
+      : function (min) { return concAt(vals, min); };
+
+    var occ = new Array(1440).fill(null);
+    var outMin = 0;
+    trips.forEach(function (tr) {
+      if (!/^\d\d:\d\d$/.test(tr.t)) return;
+      var start = parseInt(tr.t.slice(0, 2), 10) * 60 + parseInt(tr.t.slice(3, 5), 10);
+      var dur = Math.max(1, Math.min(720, tr.m || 1));
+      for (var k = 0; k < dur; k++) {
+        var m = (start + k) % 1440;
+        var f = ACT[tr.a] || 1.5;
+        if (occ[m] === null || f > occ[m]) occ[m] = f;
+      }
+    });
+    for (var m2 = 0; m2 < 1440; m2++) if (occ[m2] !== null) outMin++;
+
+    var dose = 0, cSum = 0;
+    for (var m3 = 0; m3 < 1440; m3++) {
+      if (occ[m3] !== null) {
+        var c = get(m3);
+        cSum += c;
+        dose += c * occ[m3] * (1 - maskF) / 60;
+      }
+    }
+    var eq = dose / 24;
+
+    $("avgout").innerHTML = fmt(eq, 1) + " <small>µg/m³ 24-hr equivalent</small>";
+    $("dose").textContent = fmt(Math.round(dose));
+    $("tripavg").textContent = outMin > 0 ? fmt(cSum / outMin, 1) : "—";
+    $("hrs").textContent = (outMin / 60).toFixed(1);
+
+    $("mk").style.left = Math.min(eq, 100) + "%";
+
+    var bi = BANDS.findIndex(function (b) { return eq <= b.max; });
+    if (bi < 0) bi = 5;
+    var shown = bi + (sens ? 1 : 0);
+    if (shown > 5) shown = 5;
+    var band = BANDS[shown];
+    var rb = $("risk");
+    rb.textContent = band.name + (sens && bi < 5 ? " (raised one level — sensitive)" : "");
+    rb.style.background = band.cls;
+    $("advice").textContent = band.advice + (maskF > 0 ? " Mask worn on trips: inhaled outdoor dose reduced by ~" + Math.round(maskF * 100) + "%." : "");
+
+    drawChart(get, occ);
+  }
+
+  /* ---------- chart rendering ---------- */
+  function drawChart(get, occ) {
+    var mobile = window.innerWidth < 560;
+    var W = mobile ? 460 : 760, H = mobile ? 230 : 190, L = 42, R = 10, T = 12, B = 26;
+    var fs = mobile ? 14 : 10;
+    var pw = W - L - R, ph = H - T - B;
+    var peak = 0;
+    for (var m = 0; m < 1440; m += 15) peak = Math.max(peak, get(m));
+    var top = Math.max(Math.ceil((peak * 1.15) / 25) * 25, 50);
+    var x = function (m) { return L + pw * m / 1440; };
+    var y = function (c) { return T + ph * (1 - Math.min(c, top * 1.05) / top); };
+
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Hourly PM2.5 profile chart">';
+    svg += '<style>.ax{font:' + fs + 'px sans-serif;fill:#a9a79f}.gl{stroke:#e3e0d8;stroke-width:1}</style>';
+
+    for (var g = 0; g <= top; g += Math.max(25, Math.round(top / 4 / 25) * 25)) {
+      svg += '<line class="gl" x1="' + L + '" y1="' + y(g) + '" x2="' + (W - R) + '" y2="' + y(g) + '"/>';
+      svg += '<text class="ax" x="' + (L - 6) + '" y="' + (y(g) + 3) + '" text-anchor="end">' + g + '</text>';
+    }
+    var step = mobile ? 8 : 6;
+    for (var hh = 0; hh <= 24; hh += step) {
+      svg += '<text class="ax" x="' + x(hh * 60) + '" y="' + (H - 8) + '" text-anchor="middle">' + (hh === 24 ? "" : (hh < 10 ? "0" : "") + hh + ":00") + '</text>';
+    }
+
+    var run = null;
+    for (var m2 = 0; m2 <= 1440; m2++) {
+      var on = m2 < 1440 && occ[m2] !== null;
+      if (on && run === null) run = m2;
+      if (!on && run !== null) {
+        svg += '<rect x="' + x(run) + '" y="' + T + '" width="' + (x(m2) - x(run)) + '" height="' + ph + '" fill="#01696f" opacity="0.18"/>';
+        run = null;
+      }
+    }
+
+    svg += '<line x1="' + L + '" y1="' + y(15) + '" x2="' + (W - R) + '" y2="' + y(15) + '" stroke="#3f9c5f" stroke-width="1.5" stroke-dasharray="5 4"/>';
+    svg += '<line x1="' + L + '" y1="' + y(37.5) + '" x2="' + (W - R) + '" y2="' + y(37.5) + '" stroke="#e0913a" stroke-width="1.5" stroke-dasharray="5 4"/>';
+
+    var pts = "";
+    for (var m3 = 0; m3 <= 1440; m3 += 10) pts += x(m3) + "," + y(get(m3)) + " ";
+    svg += '<path d="M' + x(0) + ',' + y(0) + ' L' + pts.trim().split(" ").join(" L") + ' L' + x(1440) + ',' + y(0) + ' Z" fill="#01696f" opacity="0.08"/>';
+    svg += '<polyline points="' + pts.trim() + '" fill="none" stroke="#01696f" stroke-width="2" stroke-linejoin="round"/>';
+    svg += '</svg>';
+    $("chart").innerHTML = svg;
+  }
+
+  // Initialize with current SGT date and trigger initial fetch
+  var today = new Date();
+  var sgtDate = new Date(today.getTime() + (8 * 60 - today.getTimezoneOffset()) * 60000).toISOString().slice(0, 10);
+  $("date").value = sgtDate;
+
+  var rTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(rTimer);
+    rTimer = setTimeout(calc, 150);
+  });
+
+  fetchNEA();
+})();
+</script>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  const DEFAULT_LINE_HEIGHT = 16;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  const PICK_CAPABILITIES = ["pick"];
+  const PICK_CHAIN_LENGTH = 4;
+  const PICK_MAX_TEXT_CHARS = 120;
+  const PICK_MAX_HTML_CHARS = 300;
+
+  function truncate(value, maxChars) {
+    return value.length > maxChars ? value.slice(0, maxChars - 1) + "…" : value;
+  }
+
+  function isPickableElement(element) {
+    return (
+      element instanceof Element &&
+      element !== document.documentElement &&
+      element !== document.body
+    );
+  }
+
+  function resolvePickTarget(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const element = document.elementFromPoint(x, y);
+    return isPickableElement(element) ? element.closest("svg") || element : null;
+  }
+
+  function pickLabel(element) {
+    if (element.id) return element.localName + "#" + element.id;
+    return [element.localName].concat(Array.from(element.classList).slice(0, 2)).join(".");
+  }
+
+  // Only attributes that help find the element in source. data-* values and URL
+  // query strings or fragments can carry tokens.
+  const PICK_ATTRIBUTES = new Set([
+    "id",
+    "class",
+    "name",
+    "type",
+    "role",
+    "alt",
+    "aria-label",
+    "href",
+    "src",
+  ]);
+
+  function pickAttributeValue(attribute) {
+    return attribute.name === "href" || attribute.name === "src"
+      ? attribute.value.split(/[?#]/)[0]
+      : attribute.value;
+  }
+
+  function describePickElement(element) {
+    const chain = [];
+    for (
+      let current = element;
+      isPickableElement(current) && chain.length < PICK_CHAIN_LENGTH;
+      current = current.parentElement
+    ) {
+      chain.unshift(current);
+    }
+    const attributes = Array.from(element.attributes)
+      .filter((attribute) => PICK_ATTRIBUTES.has(attribute.name))
+      .map((attribute) => ` ${attribute.name}="${pickAttributeValue(attribute).replace(/"/g, "&quot;")}"`)
+      .join("");
+    const text = (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+    return {
+      chain: chain.map(pickLabel),
+      html: truncate(`<${element.localName}${attributes}>`, PICK_MAX_HTML_CHARS),
+      text: text ? truncate(text, PICK_MAX_TEXT_CHARS) : undefined,
+    };
+  }
+
+  // Hover asks once per frame, and innerText on a large section forces layout,
+  // so only the rect is re-read while the pointer stays on the same element.
+  // Clicks ask for fresh details since the page may have changed the element.
+  let lastPick = null;
+
+  function describePickTarget(element, fresh) {
+    if (fresh || lastPick?.element !== element) {
+      lastPick = { element, details: describePickElement(element) };
+    }
+    const rect = element.getBoundingClientRect();
+    return {
+      rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      ...lastPick.details,
+    };
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      capabilities: PICK_CAPABILITIES,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_PICK") {
+      const element = resolvePickTarget(event.data.x, event.data.y);
+      postToTrustedTop({
+        type: "INLINE_EDIT_PICK_RESULT",
+        seq: event.data.seq,
+        target: element ? describePickTarget(element, event.data.fresh === true) : null,
+      });
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_BY") {
+      const { deltaX, deltaY, deltaMode } = event.data;
+      if (!scrollForwarding || !Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+      if (deltaMode !== 0 && deltaMode !== 1 && deltaMode !== 2) return;
+      const lineHeight =
+        parseFloat(getComputedStyle(document.documentElement).lineHeight) || DEFAULT_LINE_HEIGHT;
+      const scaleX = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerWidth : 1;
+      const scaleY = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerHeight : 1;
+      // The selection overlay receives the wheel event instead of this iframe.
+      // Instant scrolling preserves trackpad deltas even on smooth-scroll sites.
+      window.scrollBy({ left: deltaX * scaleX, top: deltaY * scaleY, behavior: "instant" });
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
+</html>
